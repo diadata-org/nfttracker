@@ -5,7 +5,7 @@ import (
 	"context"
 	"os"
 
-	"github.com/diadata-org/diadata/pkg/utils"
+	"github.com/diadata-org/nfttracker/pkg/utils"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/sirupsen/logrus"
 )
