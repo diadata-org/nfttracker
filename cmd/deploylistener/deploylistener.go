@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"math/big"
 	"strings"
 
 	"github.com/diadata-org/nfttracker/pkg/helper/kafkaHelper"
@@ -46,43 +45,45 @@ const abistring = `[
 `
 
 func main() {
+
+	//connecting to mainnet
 	client, err := ethclient.Dial("wss://eth-mainnet.alchemyapi.io/v2/UpWALFqrTh5m8bojhDcgtBIif-Ug5UUE")
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	w := kafkaHelper.NewWriter(kafkaHelper.TopicNFTMINT)
-	start := int64(14569635)
 
-	for {
-		head, _ := client.HeaderByNumber(context.Background(), big.NewInt(start))
-		processHead(head, client, w)
-		start = start + 1
-	}
+	//for testing existing nft block
+	/*
+		start := int64(14569635)
+		for {
+			head, _ := client.HeaderByNumber(context.Background(), big.NewInt(start))
+			processHead(head, client, w)
+			start = start + 1
+		}
+	*/
 
 	log.Infoln("listening to all NFT contract deployed events")
-	subscribeBlock(client, w)
-
-	// fmt.Println(checkType(common.HexToAddress("0xFAFf15C6cDAca61a4F87D329689293E07c98f578"), client))
-
+	subscribeToBlock(client, w)
 }
 
-func checkType(contractAddress common.Address, client *ethclient.Client) (string, bool) {
+func checkTypeOfContract(contractAddress common.Address, client *ethclient.Client) (string, bool) {
 	parsedAbi, err := abi.JSON(strings.NewReader(abistring))
 	if err != nil {
 		log.Errorln("Errorparsing ABI: %v", err)
 	}
 	contract := bind.NewBoundContract(contractAddress, parsedAbi, client, client, client)
 
+	//check for type of NFT
 	if isERC1155(contract) {
 		return ERC1155, true
 	}
-
 	if isERC721(contract) {
 		return ERC721, true
 	}
-	return "", false
 
+	return "", false
 }
 
 func isERC1155(contract *bind.BoundContract) (isNFT bool) {
@@ -93,7 +94,6 @@ func isERC1155(contract *bind.BoundContract) (isNFT bool) {
 		isNFT = *abi.ConvertType(out[0], new(bool)).(*bool)
 	}
 	return
-
 }
 
 func isERC721(contract *bind.BoundContract) (isNFT bool) {
@@ -103,7 +103,6 @@ func isERC721(contract *bind.BoundContract) (isNFT bool) {
 		isNFT = *abi.ConvertType(out[0], new(bool)).(*bool)
 	}
 	return
-
 }
 
 func processHead(header *types.Header, client *ethclient.Client, w *kafka.Writer) {
@@ -114,35 +113,29 @@ func processHead(header *types.Header, client *ethclient.Client, w *kafka.Writer
 		log.Fatal(err)
 	}
 
-	// block, err = client.BlockByNumber(context.Background(), big.NewInt(14658107))
-
-	// fmt.Println(block.Hash().Hex())                      // 0xbc10defa8dda384c96a17640d84de5578804945d347072e091b4e5f390ddea7f
-	// fmt.Println("Block number", block.Number().Uint64()) // 3477413
-	// fmt.Println(block.Time().Uint64())     // 1529525947
-	// fmt.Println("Total Transactions in block", len(block.Transactions())) // 7
-
 	txs := block.Transactions()
+	processTransactions(txs, client, w)
+}
 
+func processTransactions(txs []*types.Transaction, client *ethclient.Client, w *kafka.Writer) {
 	for _, tx := range txs {
-
 		if tx.To() == nil {
 			txr, _ := client.TransactionReceipt(context.Background(), tx.Hash())
-			nftType, isNFt := checkType(txr.ContractAddress, client)
+			nftType, isNFt := checkTypeOfContract(txr.ContractAddress, client)
 			if isNFt {
 				message := diatypes.NFTCreation{Address: txr.ContractAddress.String(), NFTType: nftType}
 				log.Infoln("nft contract deployed", message)
 				kafkaHelper.WriteMessage(w, message)
-
-			} else {
-				// fmt.Println("-----------------Contract but not NFT-------------------", txr.ContractAddress.String())
 			}
 		}
 	}
 }
 
-func subscribeBlock(client *ethclient.Client, w *kafka.Writer) {
+func subscribeToBlock(client *ethclient.Client, w *kafka.Writer) {
+	//creating chanel to read headers
 	headers := make(chan *types.Header)
 	sub, err := client.SubscribeNewHead(context.Background(), headers)
+
 	if err != nil {
 		log.Errorln(err)
 	}
@@ -153,8 +146,6 @@ func subscribeBlock(client *ethclient.Client, w *kafka.Writer) {
 			log.Errorln(err)
 		case header := <-headers:
 			processHead(header, client, w)
-
 		}
 	}
-
 }

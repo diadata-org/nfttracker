@@ -10,6 +10,8 @@ option go_package = "github.com/diadata-org/nfttracker/pkg/helper/rpc/events";
 
  service EventCollector {
   rpc NFTCollection (google.protobuf.Empty) returns (stream collectionCreated) {}
+  rpc NFTTransfer (google.protobuf.Empty) returns (stream NFTTransaction) {}
+
 }
 
 // The request message containing the user's name.
@@ -17,6 +19,11 @@ message collectionCreated {
   string address = 1;
   string type = 2;
   google.protobuf.Timestamp time = 3;
+}
 
+message NFTTransaction {
+  string address = 1;
+  string txhash = 2;
+  google.protobuf.Timestamp time = 3;
 }
 

@@ -2,18 +2,21 @@ package main
 
 import (
 	"context"
+	"net"
+
 	// "fmt"
 	"log"
 	"math/big"
+
 	// "strings"
 	"sync"
 
 	"github.com/diadata-org/nfttracker/pkg/db"
-	"github.com/diadata-org/nfttracker/pkg/helper/kafkaHelper"
+	pb "github.com/diadata-org/nfttracker/pkg/helper/events"
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	diatypes "github.com/diadata-org/nfttracker/pkg/types"
-
-	"github.com/segmentio/kafka-go"
 
 	// "github.com/ethereum/go-ethereum/accounts/abi"
 	// "github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -80,20 +83,53 @@ var logTransferSigHash = crypto.Keccak256Hash(logTransferSig)
 
 type TransferTracker struct {
 	WsClient     *ethclient.Client
-	w            *kafka.Writer
 	influxclient *db.DB
 }
 
 const NFT_COLLECTION_TABLE = "nftcollection"
 
+type server struct {
+	pb.UnimplementedEventCollectorServer
+}
+
+var transferevent chan pb.NFTTransaction
+
+func (s *server) NFTTransfer(_ *emptypb.Empty, server pb.EventCollector_NFTTransferServer) error {
+
+	for {
+		msg := <-transferevent
+		log.Println("---", msg)
+		server.Send(&msg)
+	}
+
+	return nil
+}
+
 func main() {
+	transferevent = make(chan pb.NFTTransaction)
+
+	lis, err := net.Listen("tcp", ":50052")
+	if err != nil {
+		log.Fatalf("failed to listen: %v", err)
+	}
+	s := grpc.NewServer()
+
+	pb.RegisterEventCollectorServer(s, &server{})
+	go func() {
+		log.Printf("server listening at %v", lis.Addr())
+		if err := s.Serve(lis); err != nil {
+			log.Fatalf("failed to serve: %v", err)
+		}
+	}()
+
+	//------
+
 	client, err := ethclient.Dial("wss://eth-mainnet.alchemyapi.io/v2/UpWALFqrTh5m8bojhDcgtBIif-Ug5UUE")
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	influxclient, _ := db.NewDataStore()
-	w := kafkaHelper.NewWriter(kafkaHelper.TopicNFTMINT)
 
 	pgclient := db.PostgresDatabase()
 
@@ -120,7 +156,7 @@ func main() {
 
 	// head, _ := client.HeaderByNumber(context.Background(), big.NewInt(12543530))
 
-	tt := &TransferTracker{WsClient: client, w: w, influxclient: influxclient}
+	tt := &TransferTracker{WsClient: client, influxclient: influxclient}
 	var wg sync.WaitGroup
 
 	for _, address := range addresses {
@@ -166,11 +202,18 @@ func (tt *TransferTracker) subscribeNFT(address string) {
 					log.Println("from tx", common.HexToAddress(msg.Topics[1].Hex()))
 					log.Println("to tx", common.HexToAddress(msg.Topics[2].Hex()))
 					log.Println("tokenid tx", msg.Topics[3].Hex())
+					log.Println("sent")
+					tx := pb.NFTTransaction{}
+					tx.Address = msg.Address.Hex()
+					tx.Txhash = msg.TxHash.Hex()
+
 					if common.HexToAddress(msg.Topics[1].Hex()) == common.HexToAddress("0x0000000000000000000000000000000000000000") {
 						mint = true
 					}
+					transferevent <- tx
 					tt.influxclient.SaveNFTEvent(diatypes.NFTTransfer{Mint: mint, Address: msg.Address.Hex(), From: common.HexToAddress(msg.Topics[1].Hex()).Hex(), To: common.HexToAddress(msg.Topics[2].Hex()).Hex(), TransactionID: msg.TxHash.Hex()})
 					tt.influxclient.Flush()
+
 				}
 
 			}

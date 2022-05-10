@@ -24,6 +24,7 @@ const _ = grpc.SupportPackageIsVersion7
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type EventCollectorClient interface {
 	NFTCollection(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (EventCollector_NFTCollectionClient, error)
+	NFTTransfer(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (EventCollector_NFTTransferClient, error)
 }
 
 type eventCollectorClient struct {
@@ -66,11 +67,44 @@ func (x *eventCollectorNFTCollectionClient) Recv() (*CollectionCreated, error) {
 	return m, nil
 }
 
+func (c *eventCollectorClient) NFTTransfer(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (EventCollector_NFTTransferClient, error) {
+	stream, err := c.cc.NewStream(ctx, &EventCollector_ServiceDesc.Streams[1], "/rpc.EventCollector/NFTTransfer", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &eventCollectorNFTTransferClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type EventCollector_NFTTransferClient interface {
+	Recv() (*NFTTransaction, error)
+	grpc.ClientStream
+}
+
+type eventCollectorNFTTransferClient struct {
+	grpc.ClientStream
+}
+
+func (x *eventCollectorNFTTransferClient) Recv() (*NFTTransaction, error) {
+	m := new(NFTTransaction)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // EventCollectorServer is the server API for EventCollector service.
 // All implementations must embed UnimplementedEventCollectorServer
 // for forward compatibility
 type EventCollectorServer interface {
 	NFTCollection(*emptypb.Empty, EventCollector_NFTCollectionServer) error
+	NFTTransfer(*emptypb.Empty, EventCollector_NFTTransferServer) error
 	mustEmbedUnimplementedEventCollectorServer()
 }
 
@@ -80,6 +114,9 @@ type UnimplementedEventCollectorServer struct {
 
 func (UnimplementedEventCollectorServer) NFTCollection(*emptypb.Empty, EventCollector_NFTCollectionServer) error {
 	return status.Errorf(codes.Unimplemented, "method NFTCollection not implemented")
+}
+func (UnimplementedEventCollectorServer) NFTTransfer(*emptypb.Empty, EventCollector_NFTTransferServer) error {
+	return status.Errorf(codes.Unimplemented, "method NFTTransfer not implemented")
 }
 func (UnimplementedEventCollectorServer) mustEmbedUnimplementedEventCollectorServer() {}
 
@@ -115,6 +152,27 @@ func (x *eventCollectorNFTCollectionServer) Send(m *CollectionCreated) error {
 	return x.ServerStream.SendMsg(m)
 }
 
+func _EventCollector_NFTTransfer_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(emptypb.Empty)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(EventCollectorServer).NFTTransfer(m, &eventCollectorNFTTransferServer{stream})
+}
+
+type EventCollector_NFTTransferServer interface {
+	Send(*NFTTransaction) error
+	grpc.ServerStream
+}
+
+type eventCollectorNFTTransferServer struct {
+	grpc.ServerStream
+}
+
+func (x *eventCollectorNFTTransferServer) Send(m *NFTTransaction) error {
+	return x.ServerStream.SendMsg(m)
+}
+
 // EventCollector_ServiceDesc is the grpc.ServiceDesc for EventCollector service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -126,6 +184,11 @@ var EventCollector_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "NFTCollection",
 			Handler:       _EventCollector_NFTCollection_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "NFTTransfer",
+			Handler:       _EventCollector_NFTTransfer_Handler,
 			ServerStreams: true,
 		},
 	},

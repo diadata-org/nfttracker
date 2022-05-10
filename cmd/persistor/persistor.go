@@ -49,11 +49,15 @@ func main() {
 
 	pgclient := db.PostgresDatabase()
 	flag.Parse()
+
+	//--------------------------no
+
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
 	s := grpc.NewServer()
+
 	pb.RegisterEventCollectorServer(s, &server{})
 	go func() {
 		log.Printf("server listening at %v", lis.Addr())
@@ -61,6 +65,7 @@ func main() {
 			log.Fatalf("failed to serve: %v", err)
 		}
 	}()
+	//--------------------------no
 
 	query := `CREATE TABLE IF NOT EXISTS ` + NFT_COLLECTION_TABLE + ` (
 		address text UNIQUE,
@@ -87,8 +92,11 @@ func main() {
 		if err != nil {
 			log.Errorln("error on kafka reader", err.Error())
 		} else {
+
 			var nftcreated diatypes.NFTCreation
+
 			json.Unmarshal(m.Value, &nftcreated)
+
 			log.Infoln("nft deployed", nftcreated)
 			messages <- nftcreated.Address
 			err = insertIntoNFTCollection(nftcreated, pgclient)
@@ -97,7 +105,6 @@ func main() {
 			}
 		}
 	}
-
 }
 
 func insertIntoNFTCollection(nftcreated diatypes.NFTCreation, client *pgxpool.Pool) error {
