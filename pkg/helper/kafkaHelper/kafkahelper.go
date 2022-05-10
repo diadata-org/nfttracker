@@ -2,13 +2,9 @@ package kafkaHelper
 
 import (
 	"context"
-	"errors"
-	"fmt"
-	"io"
 	"os"
 	"time"
 
-	"github.com/diadata-org/diadata/pkg/dia"
 	"github.com/segmentio/kafka-go"
 	log "github.com/sirupsen/logrus"
 )
@@ -225,105 +221,4 @@ func IsTopicEmpty(topic int) bool {
 	offset := ReadOffsetWithRetryOnError(topic)
 	offset--
 	return offset < 0
-}
-
-func GetLastElementWithRetryOnError(topic int) interface{} {
-	for {
-		i, err := GetLastElement(topic)
-		if err == nil {
-			return i
-		}
-		time.Sleep(retryDelay)
-		log.Println("GetLastElementWithRetryOnError retrying...")
-	}
-}
-
-func GetLastElement(topic int) (interface{}, error) {
-	offset := ReadOffsetWithRetryOnError(topic)
-	offset--
-	if offset < 0 {
-		return nil, io.EOF
-	} else {
-		e, err := GetElements(topic, offset, 1)
-		if err == nil {
-			return e[0], nil
-		} else {
-			return nil, err
-		}
-	}
-}
-
-func GetElements(topic int, offset int64, nbElements int) ([]interface{}, error) {
-
-	var result []interface{}
-
-	var maxOffset = offset + int64(nbElements)
-
-	conn, err := kafka.DialLeader(context.Background(), "tcp", KafkaConfig.KafkaUrl[0], getTopic(topic), 0)
-
-	if err != nil {
-		log.Errorln("kafka error:", err)
-		return nil, err
-	} else {
-
-		newSeek, err := conn.Seek(int64(offset), kafka.SeekAbsolute)
-
-		if err != nil {
-			log.Errorln("kafka error on seek:", err)
-			return nil, err
-		}
-
-		log.Printf("kafka newSeek:%v", newSeek)
-
-		first, last, err := conn.ReadOffsets()
-		if err != nil {
-			return nil, err
-		}
-		log.Printf("kafka ReadOffsets:%v, %v", first, last)
-
-		batch := conn.ReadBatch(0, messageSizeMax*nbElements)
-
-		b := make([]byte, messageSizeMax)
-		for c := offset; c <= maxOffset; c++ {
-			z, err := batch.Read(b)
-			if err != nil {
-				log.Printf("error on batch read: %v", err)
-				return nil, err
-			}
-			b2 := b[:z]
-
-			switch topic {
-			case TopicFiltersBlock:
-				var e dia.FiltersBlock
-				err = e.UnmarshalBinary(b2)
-				if err == nil {
-					result = append(result, e)
-				}
-			case TopicTrades:
-				var e dia.Trade
-				err = e.UnmarshalBinary(b2)
-				if err == nil {
-					result = append(result, e)
-				}
-			case TopicTradesBlock:
-				var e dia.TradesBlock
-				err = e.UnmarshalBinary(b2)
-				if err == nil {
-					result = append(result, e)
-				}
-			default:
-				return nil, errors.New("missing case unknown topic in switch... function GetElements / Kafka.go")
-			}
-
-			if err != nil {
-				errorMsg := fmt.Sprintf("parsing error while processing offset: %v/%v", c, maxOffset)
-				return nil, errors.New(errorMsg)
-			}
-			if len(result) == nbElements {
-				break
-			}
-		}
-
-		return result, nil
-	}
 }
