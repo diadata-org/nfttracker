@@ -55,14 +55,13 @@ func main() {
 	w := kafkaHelper.NewWriter(kafkaHelper.TopicNFTMINT)
 
 	//for testing existing nft block
-	/*
-		start := int64(14569635)
-		for {
-			head, _ := client.HeaderByNumber(context.Background(), big.NewInt(start))
-			processHead(head, client, w)
-			start = start + 1
-		}
-	*/
+
+	// start := int64(14569635)
+	// for {
+	// 	head, _ := client.HeaderByNumber(context.Background(), big.NewInt(start))
+	// 	processHead(head, client, w)
+	// 	start = start + 1
+	// }
 
 	log.Infoln("listening to all NFT contract deployed events")
 	subscribeToBlock(client, w)
@@ -106,7 +105,7 @@ func isERC721(contract *bind.BoundContract) (isNFT bool) {
 }
 
 func processHead(header *types.Header, client *ethclient.Client, w *kafka.Writer) {
-	log.Println(header.Hash().Hex()) // 0xbc10defa8dda384c96a17640d84de5578804945d347072e091b4e5f390ddea7f
+	log.Infoln(header.Hash().Hex()) // 0xbc10defa8dda384c96a17640d84de5578804945d347072e091b4e5f390ddea7f
 
 	block, err := client.BlockByHash(context.Background(), header.Hash())
 	if err != nil {

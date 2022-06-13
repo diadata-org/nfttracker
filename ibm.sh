@@ -1,7 +1,8 @@
-dockerfile="Dockerfile-deploylistener"
-imageName="deploylistener"
+dockerfile="Dockerfile-woodpecker-api"
+imageName="woodpecker-api"
+# imageName="deploylistener",minttracker,persistor,woodpecker-api
 type="services"
-version="v1.0"
+version="v1.1"
 
 build_and_push() {
         docker build -f "build/$1" -t "diadata.$2" .

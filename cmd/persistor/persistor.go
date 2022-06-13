@@ -33,12 +33,14 @@ type server struct {
 
 func (s *server) NFTCollection(_ *emptypb.Empty, server pb.EventCollector_NFTCollectionServer) error {
 
-	for {
-		msg := <-messages
-		log.Println("---", msg)
-		resp := pb.CollectionCreated{Address: msg}
-		server.Send(&resp)
-	}
+	go func() {
+		for {
+			msg := <-messages
+			log.Println("---", msg)
+			resp := pb.CollectionCreated{Address: msg}
+			server.Send(&resp)
+		}
+	}()
 
 	return nil
 }
@@ -98,7 +100,9 @@ func main() {
 			json.Unmarshal(m.Value, &nftcreated)
 
 			log.Infoln("nft deployed", nftcreated)
-			messages <- nftcreated.Address
+			go func() {
+				messages <- nftcreated.Address
+			}()
 			err = insertIntoNFTCollection(nftcreated, pgclient)
 			if err != nil {
 				log.Errorln("error on updating pg", err.Error())
@@ -109,7 +113,7 @@ func main() {
 
 func insertIntoNFTCollection(nftcreated diatypes.NFTCreation, client *pgxpool.Pool) error {
 	query := fmt.Sprintf("insert into %s (address,type,time) values ($1,$2,$3)", NFT_COLLECTION_TABLE)
-	log.Infoln(query)
+	log.Infoln("query", query)
 	_, err := client.Exec(context.Background(), query, nftcreated.Address, nftcreated.NFTType, time.Now())
 	if err != nil {
 		return err

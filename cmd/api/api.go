@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"io"
-	"log"
 	"net/http"
 
 	"github.com/jackc/pgx/v4/pgxpool"
@@ -14,8 +13,10 @@ import (
 
 	pb "github.com/diadata-org/nfttracker/pkg/helper/events"
 	"github.com/diadata-org/nfttracker/pkg/helper/wshelper"
+	"github.com/diadata-org/nfttracker/pkg/utils"
 
 	"github.com/gorilla/websocket"
+	"github.com/sirupsen/logrus"
 )
 
 type WSRequest struct {
@@ -28,47 +29,59 @@ type WSResponse struct {
 	Response interface{}
 }
 
-var nftDeploychannel *wshelper.WSChannel
-var nftMintchannel *wshelper.WSChannel
+const (
+	NFT_MINT_CHANNEL   = "nftmint"
+	NFT_DEPLOY_CHANNEL = "nftdeploy"
+	PING               = "ping"
+)
 
-var addr = flag.String("addr", "localhost:8080", "http service address")
-var pgclient *pgxpool.Pool
-var upgrader = websocket.Upgrader{} // use default options
+var (
+	log              = logrus.New()
+	nftDeploychannel *wshelper.WSChannel
+	nftMintchannel   *wshelper.WSChannel
+	addr             = flag.String("addr", ":8080", "http service address")
+	pgclient         *pgxpool.Pool
+	upgrader         = websocket.Upgrader{} // use default options
+	nftdeployed      chan string
+	grpcaddr         string
+	mintaddr         string
+	nftminted        chan string
+)
 
 func nft(w http.ResponseWriter, r *http.Request) {
 	c, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Print("upgrade:", err)
+		log.Errorln("upgrade:", err)
 		return
 	}
 	defer c.Close()
 	for {
 		var message WSRequest
-		log.Printf("recv: %s", message)
 
 		err := c.ReadJSON(&message)
 		if err != nil {
-			log.Println("err:", err)
+			log.Errorln("err:", err)
 		}
 		switch message.Channel {
 
-		case "nftdeploy":
+		case NFT_DEPLOY_CHANNEL:
 			{
 				nftDeploychannel.AddConnection((c))
-				msg := "subscibed to nftdeploy"
+				msg := "subscribed to " + message.Channel
 				c.WriteJSON(&WSResponse{Response: msg})
 
 			}
-		case "nftmint":
+		case NFT_MINT_CHANNEL:
 			{
 				nftMintchannel.AddConnection((c))
-				msg := "subscibed to nftmint"
+				msg := "subscibed to " + message.Channel
 				c.WriteJSON(&WSResponse{Response: msg})
 
 			}
-		case "nftdetail":
+		case PING:
 			{
-
+				msg := "alive"
+				c.WriteJSON(&WSResponse{Response: msg})
 			}
 		default:
 			{
@@ -85,14 +98,10 @@ func nft(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-var (
-	grpcaddr = flag.String("grpcaddr", "localhost:50051", "the address to connect to")
-	mintaddr = flag.String("mintaddr", "localhost:50052", "the address to connect to")
-)
-var nftdeployed chan string
-var nftminted chan string
-
 func main() {
+
+	grpcaddr = utils.Getenv("PERSISTOR_GRPC", "172.17.25.42:50051")
+	mintaddr = utils.Getenv("MINTTRACKER_GRPC", "172.17.25.42:50052")
 
 	nftDeploychannel = wshelper.NewChannel()
 	nftMintchannel = wshelper.NewChannel()
@@ -101,7 +110,6 @@ func main() {
 	nftminted = make(chan string)
 
 	flag.Parse()
-	log.SetFlags(0)
 
 	// send message to channels
 
@@ -110,10 +118,8 @@ func main() {
 			select {
 			case msg := <-nftdeployed:
 				nftDeploychannel.Send(&WSResponse{Response: msg})
-				log.Println("----nft nftdeployed", msg)
 
 			case msg := <-nftminted:
-				log.Println("----nft minted", msg)
 				nftMintchannel.Send(&WSResponse{Response: msg})
 			}
 		}
@@ -121,8 +127,10 @@ func main() {
 
 	//Listen to nftdeployed and nftmint events from restpected grpc streams
 
-	nftdeployedconn, err := grpc.Dial(*grpcaddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	nftdeployedconn, err := grpc.Dial(grpcaddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
+		log.Fatalf("grpcaddr: %v", grpcaddr)
+
 		log.Fatalf("did not connect: %v", err)
 	}
 	defer nftdeployedconn.Close()
@@ -132,7 +140,7 @@ func main() {
 
 	nftDeployedstream, err := c.NFTCollection(context.Background(), &in)
 	if err != nil {
-		log.Fatalf("open stream error %v", err)
+		log.Fatalf("open stream error nftDeployedstream %v", err)
 	}
 	done := make(chan bool)
 	go func() {
@@ -141,22 +149,22 @@ func main() {
 			resp, err := nftDeployedstream.Recv()
 			if err == io.EOF {
 				done <- true //means stream is finished
-				log.Println("listening to nftcollection")
+				log.Infoln("listening to nftcollection")
 				return
 			}
 			if err != nil {
 				log.Fatalf("cannot receive %v", err)
 			}
-			log.Printf("Resp sending to chan: %s", resp)
+			log.Infoln("Resp sending to chan: %s", resp)
 
 			nftminted <- resp.Address
-			log.Printf("Resp sent to chan: %s", resp)
+			log.Infoln("Resp sent to chan: %s", resp)
 		}
 	}()
 
 	// listen to NFt mints
 
-	nftmintedconn, err := grpc.Dial(*mintaddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	nftmintedconn, err := grpc.Dial(mintaddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		log.Fatalf("did not connect: %v", err)
 	}
@@ -167,32 +175,29 @@ func main() {
 
 	nftmintstream, err := nftmintev.NFTTransfer(context.Background(), &in)
 	if err != nil {
-		log.Fatalf("open stream error %v", err)
+		log.Fatalf("open stream error nftmintstream %v", err)
 	}
 
-	log.Println("----")
 	mintdone := make(chan bool)
 	go func() {
 
-		log.Println("listening to nftmintstream")
+		log.Infoln("listening to nftmintstream")
 		for {
 
 			resp, err := nftmintstream.Recv()
 			if err == io.EOF {
 				mintdone <- true //means stream is finished
-				log.Println("listening to nftmintstream")
+				log.Infoln("listening to nftmintstream")
 
 			}
 			if err != nil {
 				log.Fatalf("cannot receive %v", err)
 			}
-			log.Printf("Resp sending to chan: nftmintstream %s", resp)
-
 			nftminted <- resp.Address
-			log.Printf("Resp sent to chan: nftmintstream %s", resp)
+			log.Infoln("Resp sent to chan: nftmintstream %s", resp)
 		}
 	}()
 
-	http.HandleFunc("/nft", nft)
+	http.HandleFunc("/ws/nft", nft)
 	log.Fatal(http.ListenAndServe(*addr, nil))
 }
