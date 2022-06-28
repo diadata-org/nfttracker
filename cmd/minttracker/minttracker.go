@@ -10,6 +10,7 @@ import (
 
 	"github.com/diadata-org/nfttracker/pkg/db"
 	pb "github.com/diadata-org/nfttracker/pkg/helper/events"
+	"github.com/diadata-org/nfttracker/pkg/utils"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -64,6 +65,7 @@ func (s *server) NFTTransfer(_ *emptypb.Empty, server pb.EventCollector_NFTTrans
 
 func main() {
 	log.Println("minttracker")
+	ethws := utils.Getenv("ETH_URI_WS", "172.17.25.42:50051")
 
 	transferevent = make(chan pb.NFTTransaction)
 
@@ -83,7 +85,7 @@ func main() {
 
 	//------
 
-	client, err := ethclient.Dial("wss://eth-mainnet.alchemyapi.io/v2/UpWALFqrTh5m8bojhDcgtBIif-Ug5UUE")
+	client, err := ethclient.Dial(ethws)
 	if err != nil {
 		log.Fatal("ethclient", err)
 	}
@@ -101,29 +103,22 @@ func main() {
 	tt := &TransferTracker{WsClient: client, influxclient: influxclient}
 	var wg sync.WaitGroup
 
-	addresses := getNFTAddresstolisten()
-	for _, address := range addresses {
-		log.Println(address)
-		wg.Add(1)
+	getNFTAddresstolisten(wg, tt)
 
-		go tt.subscribeNFT(address)
-
-	}
 	wg.Wait()
 
 }
 
-func getNFTAddresstolisten() (addresses []string) {
+func getNFTAddresstolisten(wg sync.WaitGroup, tt *TransferTracker) {
 	pgclient := db.PostgresDatabase()
+	//	query := `select address from ` + NFT_COLLECTION_TABLE + ` ORDER BY time DESC LIMIT 999 ;`
 
-	query := `select address from ` + NFT_COLLECTION_TABLE + ` ORDER BY time DESC LIMIT 999 ;`
+	query := `select address from ` + NFT_COLLECTION_TABLE + ` ;`
 
 	rows, err := pgclient.Query(context.Background(), query)
 	if err != nil {
 		log.Println("Error query", err)
 	}
-
-	log.Println("rows", rows)
 
 	defer rows.Close()
 
@@ -131,12 +126,12 @@ func getNFTAddresstolisten() (addresses []string) {
 		var address string
 		err := rows.Scan(&address)
 		if err != nil {
-			log.Println("err", err)
+			log.Errorln("error scanning row", err)
 		}
-		addresses = append(addresses, address)
-	}
 
-	return
+		go tt.subscribeNFT(address)
+		wg.Add(1)
+	}
 
 }
 
