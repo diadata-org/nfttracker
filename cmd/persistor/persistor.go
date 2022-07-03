@@ -18,54 +18,55 @@ import (
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
-const NFT_COLLECTION_TABLE = "nftcollection"
-
-var log = logrus.New()
-var messages chan string
-
 var (
-	port = flag.Int("port", 50051, "The server port")
+	log                  = logrus.New()
+	NFT_COLLECTION_TABLE = "nftcollection"
+	port                 = ":50051"
 )
 
 type server struct {
+	Messages []chan string
 	pb.UnimplementedEventCollectorServer
 }
 
 func (s *server) NFTCollection(_ *emptypb.Empty, server pb.EventCollector_NFTCollectionServer) error {
+	singlemessage := make(chan string)
+	s.Messages = append(s.Messages, singlemessage)
 
-	go func() {
-		for {
-			msg := <-messages
-			log.Println("---", msg)
-			resp := pb.CollectionCreated{Address: msg}
-			server.Send(&resp)
-		}
-	}()
+	for {
+		msg := <-singlemessage
+		resp := pb.CollectionCreated{Address: msg}
+
+		server.Send(&resp)
+	}
 
 	return nil
 }
 
 func main() {
 
-	messages = make(chan string)
-
 	pgclient := db.PostgresDatabase()
 	flag.Parse()
 
 	//--------------------------no
 
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
+	lis, err := net.Listen("tcp", port)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
 	s := grpc.NewServer()
 
-	pb.RegisterEventCollectorServer(s, &server{})
+	deployednftserver := server{}
+
+	pb.RegisterEventCollectorServer(s, &deployednftserver)
 	go func() {
 		log.Printf("server listening at %v", lis.Addr())
 		if err := s.Serve(lis); err != nil {
 			log.Fatalf("failed to serve: %v", err)
 		}
+
+		log.Printf("end listening at ")
+
 	}()
 	//--------------------------no
 
@@ -99,16 +100,23 @@ func main() {
 
 			json.Unmarshal(m.Value, &nftcreated)
 
-			log.Infoln("nft deployed", nftcreated)
 			go func() {
-				messages <- nftcreated.Address
+				log.Infoln("nft deployed", nftcreated)
+				if len(deployednftserver.Messages) > 0 {
+					for _, channel := range deployednftserver.Messages {
+						channel <- nftcreated.Address
+					}
+				}
+
 			}()
+
 			err = insertIntoNFTCollection(nftcreated, pgclient)
 			if err != nil {
 				log.Errorln("error on updating pg", err.Error())
 			}
 		}
 	}
+
 }
 
 func insertIntoNFTCollection(nftcreated diatypes.NFTCreation, client *pgxpool.Pool) error {
