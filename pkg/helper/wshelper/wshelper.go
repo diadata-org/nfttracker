@@ -2,41 +2,44 @@ package wshelper
 
 import (
 	"log"
-	"time"
 
 	"github.com/gorilla/websocket"
 )
 
-type ConnectedClient struct {
-	client   *websocket.Conn
-	lastPing time.Time
-}
-
 type WSChannel struct {
-	connections []ConnectedClient
+	clients map[*websocket.Conn]bool
 }
 
 func NewChannel() *WSChannel {
-	connections := []ConnectedClient{}
-	return &WSChannel{connections: connections}
+	client := make(map[*websocket.Conn]bool)
+	return &WSChannel{clients: client}
 }
 
 func (wc *WSChannel) AddConnection(conn *websocket.Conn) {
-	wc.connections = append(wc.connections, ConnectedClient{client: conn, lastPing: time.Now()})
+	wc.clients[conn] = true
+}
+
+func (wc *WSChannel) RemoveConnection(conn *websocket.Conn) {
+	wc.clients[conn] = false
+	conn.Close()
+
 }
 
 func (wc *WSChannel) Ping(conn *websocket.Conn) {
-	wc.connections = append(wc.connections, ConnectedClient{client: conn, lastPing: time.Now()})
+	// wc.clients = append(wc.connections, ConnectedClient{client: conn, lastPing: time.Now()})
 }
 
 func (wc *WSChannel) Send(m interface{}) {
-	if len(wc.connections) > 0 {
-		for _, conn := range wc.connections {
+
+	for client, isConnected := range wc.clients {
+		if isConnected {
 			//TODO send only if last ping is in 5 minutes
-			err := conn.client.WriteJSON(m)
+			err := client.WriteJSON(m)
 			if err != nil {
 				log.Println(err)
 			}
+
 		}
+
 	}
 }
