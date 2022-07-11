@@ -140,13 +140,13 @@ func subscribeToBlock(client *ethclient.Client, w *kafka.Writer) {
 	sub, err := client.SubscribeNewHead(context.Background(), headers)
 
 	if err != nil {
-		log.Errorln(err)
+		log.Fatal("Error subscribing", err)
 	}
 
 	for {
 		select {
 		case err := <-sub.Err():
-			log.Errorln(err)
+			log.Fatal("error getiing message from rpc", err)
 		case header := <-headers:
 			processHead(header, client, w)
 		}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net"
+	"time"
 
 	"sync"
 
@@ -22,6 +23,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/getsentry/sentry-go"
 )
 
 var (
@@ -64,10 +66,28 @@ func (s *server) NFTTransfer(_ *emptypb.Empty, server pb.EventCollector_NFTTrans
 	return nil
 }
 
-func main() {
-	log.Println("minttracker")
-	grpcaddr = utils.Getenv("PERSISTOR_GRPC", "0.0.0.0:50051")
+func initsentry() {
+	err := sentry.Init(sentry.ClientOptions{
+		Dsn: "https://3983683f29344f40aef4e5125664dfb7@o1291064.ingest.sentry.io/6563600",
+		// Set TracesSampleRate to 1.0 to capture 100%
+		// of transactions for performance monitoring.
+		// We recommend adjusting this value in production,
+		TracesSampleRate: 1.0,
+	})
+	if err != nil {
+		log.Fatalf("sentry.Init: %s", err)
+	}
 
+	sentry.CaptureMessage("It works!")
+
+}
+
+func main() {
+	initsentry()
+	defer sentry.Flush(2 * time.Second)
+
+	log.Infoln("starting Mint Tracker ...")
+	grpcaddr = utils.Getenv("PERSISTOR_GRPC", "0.0.0.0:50051")
 	ethws := utils.Getenv("ETH_URI_WS", "172.17.25.42:50051")
 
 	transferevent = make(chan pb.NFTTransaction)
@@ -207,7 +227,7 @@ func (tt *TransferTracker) subscribeNFT(address string) {
 	go func() {
 		for {
 			msg := <-events
-			log.Infoln("recieved message", msg)
+			log.Infoln("recieved message")
 
 			switch msg.Topics[0].Hex() {
 			case logTransferSigHash.Hex():

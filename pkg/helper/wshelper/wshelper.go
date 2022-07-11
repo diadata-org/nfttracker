@@ -21,11 +21,14 @@ func NewChannel() *WSChannel {
 }
 
 func (wc *WSChannel) AddConnection(conn *websocket.Conn) {
+	log.Println("AddConnection: Total connection", len(wc.clients))
 	wc.clients[conn] = Client{IsConnected: true}
 }
 
 func (wc *WSChannel) RemoveConnection(conn *websocket.Conn) {
+	log.Println("RemoveConnection: exsiting status", wc.clients[conn].IsConnected)
 	wc.clients[conn] = Client{IsConnected: false}
+	log.Println("RemoveConnection: new status", wc.clients[conn].IsConnected)
 	conn.Close()
 
 }
