@@ -2,9 +2,8 @@ package main
 
 import (
 	"context"
+	"io"
 	"net"
-
-	"math/big"
 
 	"sync"
 
@@ -13,6 +12,7 @@ import (
 	"github.com/diadata-org/nfttracker/pkg/utils"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	diatypes "github.com/diadata-org/nfttracker/pkg/types"
@@ -42,6 +42,7 @@ var (
 	LogAnySwapInbyteHex  = crypto.Keccak256Hash(LogAnySwapInbyte)
 	transferevent        chan pb.NFTTransaction
 	mintgrpcPort         = ":50052"
+	grpcaddr             = ""
 )
 
 type TransferTracker struct {
@@ -65,6 +66,8 @@ func (s *server) NFTTransfer(_ *emptypb.Empty, server pb.EventCollector_NFTTrans
 
 func main() {
 	log.Println("minttracker")
+	grpcaddr = utils.Getenv("PERSISTOR_GRPC", "0.0.0.0:50051")
+
 	ethws := utils.Getenv("ETH_URI_WS", "172.17.25.42:50051")
 
 	transferevent = make(chan pb.NFTTransaction)
@@ -89,31 +92,79 @@ func main() {
 	if err != nil {
 		log.Fatal("ethclient", err)
 	}
-	log.Println("conneting to influx")
+	log.Println("connecting to influx")
 
 	influxclient, err := db.NewDataStore()
 	if err != nil {
 		log.Fatal("influxclient", err)
 	}
 
-	log.Println("conneted to influx")
+	log.Println("connected to influx")
 
 	// head, _ := client.HeaderByNumber(context.Background(), big.NewInt(12543530))
 
 	tt := &TransferTracker{WsClient: client, influxclient: influxclient}
 	var wg sync.WaitGroup
 
-	getNFTAddresstolisten(wg, tt)
+	// wg.Add(1)
+
+	go listenToDeployedNFT(&wg, tt)
+
+	getNFTAddresstolisten(&wg, tt)
 
 	wg.Wait()
 
 }
 
-func getNFTAddresstolisten(wg sync.WaitGroup, tt *TransferTracker) {
+func listenToDeployedNFT(wg *sync.WaitGroup, tt *TransferTracker) {
+
+	log.Infoln("grpcaddr", grpcaddr)
+
+	nftdeployedconn, err := grpc.Dial(grpcaddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		log.Warnf("grpcaddr: %v %v", grpcaddr, err)
+		return
+	}
+	defer nftdeployedconn.Close()
+	c := pb.NewEventCollectorClient(nftdeployedconn)
+	// }
+	in := emptypb.Empty{}
+
+	nftDeployedstream, err := c.NFTCollection(context.Background(), &in)
+	if err != nil {
+		log.Errorf("open stream error nftDeployedstream %v", err)
+	}
+	done := make(chan bool)
+
+	log.Infoln("listening to nftdeployed")
+
+	for {
+		resp, err := nftDeployedstream.Recv()
+		if err == io.EOF {
+			done <- true //means stream is finished
+			log.Infoln("ending  nftcollection")
+		}
+
+		if err != nil {
+			log.Errorf("cannot receive %v", err)
+		} else {
+			wg.Add(1)
+
+			log.Infoln("Listening to newly deployed contract %s", resp.Address)
+
+			go tt.subscribeNFT(resp.Address)
+
+		}
+
+	}
+
+}
+
+func getNFTAddresstolisten(wg *sync.WaitGroup, tt *TransferTracker) {
 	pgclient := db.PostgresDatabase()
 	//	query := `select address from ` + NFT_COLLECTION_TABLE + ` ORDER BY time DESC LIMIT 999 ;`
 
-	query := `select address from ` + NFT_COLLECTION_TABLE + ` ;`
+	query := `select address from ` + NFT_COLLECTION_TABLE + ` ORDER BY time DESC;`
 
 	rows, err := pgclient.Query(context.Background(), query)
 	if err != nil {
@@ -129,17 +180,18 @@ func getNFTAddresstolisten(wg sync.WaitGroup, tt *TransferTracker) {
 			log.Errorln("error scanning row", err)
 		}
 
-		go tt.subscribeNFT(address)
 		wg.Add(1)
+
+		go tt.subscribeNFT(address)
 	}
 
 }
 
 func (tt *TransferTracker) subscribeNFT(address string) {
-	log.Println("Subscribing to ", address)
+	log.Infof("Subscribing to %s ", address)
 	contractAddress := common.HexToAddress(address)
 	query := ethereum.FilterQuery{
-		FromBlock: big.NewInt(14397771),
+		// FromBlock: big.NewInt(14397771),
 		// ToBlock:   big.NewInt(6383840),
 		Addresses: []common.Address{
 			contractAddress,

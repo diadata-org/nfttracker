@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	// "math/big"
 	"strings"
 
 	"github.com/diadata-org/nfttracker/pkg/helper/kafkaHelper"
 	diatypes "github.com/diadata-org/nfttracker/pkg/types"
+	"github.com/diadata-org/nfttracker/pkg/utils"
 
 	"github.com/segmentio/kafka-go"
 
@@ -45,22 +47,24 @@ const abistring = `[
 `
 
 func main() {
+	ethws := utils.Getenv("ETH_URI_WS", "172.17.25.42:50051")
 
 	//connecting to mainnet
-	client, err := ethclient.Dial("wss://eth-mainnet.alchemyapi.io/v2/UpWALFqrTh5m8bojhDcgtBIif-Ug5UUE")
+	client, err := ethclient.Dial(ethws)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	w := kafkaHelper.NewWriter(kafkaHelper.TopicNFTMINT)
 
-	//for testing existing nft block
-
-	// start := int64(14569635)
+	// for testing existing nft block
+	// 14659620
+	// start := int64(15045984)
 	// for {
 	// 	head, _ := client.HeaderByNumber(context.Background(), big.NewInt(start))
 	// 	processHead(head, client, w)
 	// 	start = start + 1
+	// 	log.Infoln("Block ", start)
 	// }
 
 	log.Infoln("listening to all NFT contract deployed events")
@@ -105,7 +109,7 @@ func isERC721(contract *bind.BoundContract) (isNFT bool) {
 }
 
 func processHead(header *types.Header, client *ethclient.Client, w *kafka.Writer) {
-	log.Infoln(header.Hash().Hex()) // 0xbc10defa8dda384c96a17640d84de5578804945d347072e091b4e5f390ddea7f
+	log.Infoln("block", header.Hash().Hex()) // 0xbc10defa8dda384c96a17640d84de5578804945d347072e091b4e5f390ddea7f
 
 	block, err := client.BlockByHash(context.Background(), header.Hash())
 	if err != nil {
