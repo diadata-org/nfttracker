@@ -222,8 +222,8 @@ func (tt *TransferTracker) subscribeNFT(address string) {
 
 					if common.HexToAddress(msg.Topics[1].Hex()) == common.HexToAddress("0x0000000000000000000000000000000000000000") {
 						mint = true
+						transferevent <- tx
 					}
-					transferevent <- tx
 					tt.influxclient.SaveNFTEvent(diatypes.NFTTransfer{Mint: mint, Address: msg.Address.Hex(), From: common.HexToAddress(msg.Topics[1].Hex()).Hex(), To: common.HexToAddress(msg.Topics[2].Hex()).Hex(), TransactionID: msg.TxHash.Hex()})
 					tt.influxclient.Flush()
 				}
