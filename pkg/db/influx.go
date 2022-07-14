@@ -144,6 +144,7 @@ func (datastore *DB) GetMintStats(duration string, address string) (mintCount in
 		log.Errorln("GetLastTrades", err)
 		return 0, err
 	}
+	log.Println(res)
 
 	if len(res) > 0 && len(res[0].Series) > 0 {
 		log.Println(len(res))
