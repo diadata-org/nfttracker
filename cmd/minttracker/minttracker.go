@@ -166,7 +166,7 @@ func listenToDeployedNFT(wg *sync.WaitGroup, tt *TransferTracker) {
 		}
 
 		if err != nil {
-			log.Errorf("cannot receive %v", err)
+			log.Fatalf("cannot receive %v", err)
 		} else {
 			wg.Add(1)
 

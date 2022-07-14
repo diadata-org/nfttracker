@@ -1,11 +1,13 @@
 package db
 
 import (
+	"encoding/json"
 	"fmt"
+	"time"
+
 	diatypes "github.com/diadata-org/nfttracker/pkg/types"
 	"github.com/diadata-org/nfttracker/pkg/utils"
 	clientInfluxdb "github.com/influxdata/influxdb1-client/v2"
-	"time"
 )
 
 func GetInfluxClient(url string) clientInfluxdb.Client {
@@ -134,6 +136,27 @@ func (datastore *DB) addPoint(pt *clientInfluxdb.Point) {
 	}
 }
 
+func (datastore *DB) GetMintStats(duration string, address string) (mintCount int64, err error) {
+	q := fmt.Sprintf("SELECT count(*)  FROM nfttransfer WHERE time < now()-%s andaddress=%s and mint=true;", duration, address)
+	log.Debug(q)
+	res, err := queryInfluxDB(datastore.influxClient, q)
+	if err != nil {
+		log.Errorln("GetLastTrades", err)
+		return 0, err
+	}
+
+	if len(res) > 0 && len(res[0].Series) > 0 {
+		vol, ok := res[0].Series[0].Values[0][1].(json.Number)
+		if ok {
+			mintCount, err = vol.Int64()
+			if err != nil {
+				return mintCount, err
+			}
+		}
+	}
+	return
+}
+
 // SaveNFTEvent
 
 func (datastore *DB) SaveNFTEvent(transfer diatypes.NFTTransfer) error {
@@ -163,41 +186,3 @@ func (datastore *DB) SaveNFTEvent(transfer diatypes.NFTTransfer) error {
 	return err
 
 }
-
-// SaveTradeInflux stores a trade in influx. Flushed when more than maxPoints in batch.
-// // Wrapper around SaveTradeInfluxToTable.
-// func (datastore *DB) SaveTradeInflux(t interface{}) error {
-// 	return datastore.SaveTradeInfluxToTable(t, influxDbTradesTable)
-// }
-
-// // SaveTradeInfluxToTable stores a trade in influx into @table.
-// // Flushed when more than maxPoints in batch.
-// func (datastore *DB) SaveTradeInfluxToTable(t interface{}, table string) error {
-
-// 	// Create a point and add to batch
-// 	tags := map[string]string{
-// 		"symbol":               t.Symbol,
-// 		"pair":                 t.Pair,
-// 		"exchange":             t.Source,
-// 		"verified":             strconv.FormatBool(t.VerifiedPair),
-// 		"quotetokenaddress":    t.QuoteToken.Address,
-// 		"basetokenaddress":     t.BaseToken.Address,
-// 		"quotetokenblockchain": t.QuoteToken.Blockchain,
-// 		"basetokenblockchain":  t.BaseToken.Blockchain,
-// 	}
-// 	fields := map[string]interface{}{
-// 		"price":             t.Price,
-// 		"volume":            t.Volume,
-// 		"estimatedUSDPrice": t.EstimatedUSDPrice,
-// 		"foreignTradeID":    t.ForeignTradeID,
-// 	}
-
-// 	pt, err := clientInfluxdb.NewPoint(table, tags, fields, t.Time)
-// 	if err != nil {
-// 		log.Errorln("NewTradeInflux:", err)
-// 	} else {
-// 		datastore.addPoint(pt)
-// 	}
-
-// 	return err
-// }
