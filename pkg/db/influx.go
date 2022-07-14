@@ -137,7 +137,7 @@ func (datastore *DB) addPoint(pt *clientInfluxdb.Point) {
 }
 
 func (datastore *DB) GetMintStats(duration string, address string) (mintCount int64, err error) {
-	q := fmt.Sprintf("SELECT count(*)  FROM nfttransfer WHERE time < now() - %s and address=%s and mint=true;", duration, address)
+	q := fmt.Sprintf("SELECT count(*)  FROM nfttransfer WHERE time < now() - %s and address='%s' and mint=true;", duration, address)
 	log.Println(q)
 	res, err := queryInfluxDB(datastore.influxClient, q)
 	if err != nil {
