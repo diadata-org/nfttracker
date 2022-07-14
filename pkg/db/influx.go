@@ -146,7 +146,7 @@ func (datastore *DB) GetMintStats(duration string, address string) (mintCount in
 	}
 
 	if len(res) > 0 && len(res[0].Series) > 0 {
-		vol, ok := res[0].Series[0].Values[0][1].(json.Number)
+		vol, ok := res[0].Series[0].Values[0][2].(json.Number)
 		if ok {
 			mintCount, err = vol.Int64()
 			if err != nil {
