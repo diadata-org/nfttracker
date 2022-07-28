@@ -14,6 +14,7 @@ import (
 	pb "github.com/diadata-org/nfttracker/pkg/helper/events"
 	"github.com/diadata-org/nfttracker/pkg/helper/wshelper"
 	"github.com/diadata-org/nfttracker/pkg/utils"
+	"github.com/ethereum/go-ethereum/common"
 
 	"github.com/gorilla/websocket"
 	"github.com/sirupsen/logrus"
@@ -39,24 +40,28 @@ type WSMintStatsResponse struct {
 }
 
 const (
-	NFT_MINT_CHANNEL       = "nftmint"
-	NFT_DEPLOY_CHANNEL     = "nftdeploy"
+	NFT_MINT_CHANNEL     = "nftmint"
+	NFT_DEPLOY_CHANNEL   = "nftdeploy"
+	NFT_TRANSFER_CHANNEL = "nfttransfer"
+
 	NFT_MINT_STATS_CHANNEL = "nftstats"
 
 	PING = "ping"
 )
 
 var (
-	log              = logrus.New()
-	nftDeploychannel *wshelper.WSChannel
-	nftMintchannel   *wshelper.WSChannel
-	addr             = flag.String("addr", ":8080", "http service address")
-	upgrader         = websocket.Upgrader{} // use default options
-	nftdeployed      chan string
-	grpcaddr         string
-	mintaddr         string
-	nftminted        chan pb.NFTTransaction
-	influxclient     *db.DB
+	log                = logrus.New()
+	nftDeploychannel   *wshelper.WSChannel
+	nftMintchannel     *wshelper.WSChannel
+	nftTransferchannel *wshelper.WSChannel
+	addr               = flag.String("addr", ":8080", "http service address")
+	upgrader           = websocket.Upgrader{} // use default options
+	nftdeployed        chan string
+	grpcaddr           string
+	mintaddr           string
+	nftminted          chan pb.NFTTransaction
+	nfttransfer        chan pb.NFTTransaction
+	influxclient       *db.DB
 )
 
 func nft(w http.ResponseWriter, r *http.Request) {
@@ -86,6 +91,13 @@ func nft(w http.ResponseWriter, r *http.Request) {
 		case NFT_DEPLOY_CHANNEL:
 			{
 				nftDeploychannel.AddConnection((c))
+				msg := "subscribed to " + message.Channel
+				c.WriteJSON(&WSResponse{Response: msg})
+
+			}
+		case NFT_TRANSFER_CHANNEL:
+			{
+				nftTransferchannel.AddConnection((c))
 				msg := "subscribed to " + message.Channel
 				c.WriteJSON(&WSResponse{Response: msg})
 
@@ -152,9 +164,11 @@ func main() {
 
 	nftDeploychannel = wshelper.NewChannel()
 	nftMintchannel = wshelper.NewChannel()
+	nftTransferchannel = wshelper.NewChannel()
 
 	nftdeployed = make(chan string)
 	nftminted = make(chan pb.NFTTransaction)
+	nfttransfer = make(chan pb.NFTTransaction)
 
 	flag.Parse()
 
@@ -170,7 +184,13 @@ func main() {
 			case msg := <-nftminted:
 				log.Infoln("nft minted", msg)
 				nftMintchannel.Send(&WSResponse{Response: msg})
+
+			case msg := <-nfttransfer:
+				log.Infoln("nft minted", msg)
+				nftTransferchannel.Send(&WSResponse{Response: msg})
+
 			}
+
 		}
 	}()
 
@@ -239,7 +259,13 @@ func main() {
 			if err != nil {
 				log.Fatalf("cannot receive %v", err)
 			}
-			nftminted <- *resp
+
+			if resp.GetAddress() == common.HexToAddress("0x0000000000000000000000000000000000000000").Hex() {
+				nftminted <- *resp
+			} else {
+				nfttransfer <- *resp
+			}
+
 			log.Infoln("Resp sent to chan: nftmintstream %s", resp)
 		}
 	}()

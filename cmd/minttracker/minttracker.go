@@ -237,11 +237,12 @@ func (tt *TransferTracker) subscribeNFT(address string) {
 					tx := pb.NFTTransaction{}
 					tx.Address = msg.Address.Hex()
 					tx.Txhash = msg.TxHash.Hex()
-					tx.From = common.HexToAddress(msg.Topics[1].Hex())
-					tx.To = common.HexToAddress(msg.Topics[2].Hex())
+					tx.From = common.HexToAddress(msg.Topics[1].Hex()).Hex()
+					tx.To = common.HexToAddress(msg.Topics[2].Hex()).Hex()
 
-					if tx.From == common.HexToAddress("0x0000000000000000000000000000000000000000") {
+					if tx.From == common.HexToAddress("0x0000000000000000000000000000000000000000").Hex() {
 						mint = true
+						log.Infoln("Mint", msg.TxHash.Hex())
 					}
 					transferevent <- tx
 
