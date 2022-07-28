@@ -24,6 +24,8 @@ message collectionCreated {
 message NFTTransaction {
   string address = 1;
   string txhash = 2;
-  google.protobuf.Timestamp time = 3;
+  string to = 3;
+  string from = 4;
+  google.protobuf.Timestamp time = 5;
 }
 
