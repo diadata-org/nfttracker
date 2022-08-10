@@ -298,24 +298,26 @@ func main() {
 		}
 	}()
 
-	for {
+	go func() {
+		for {
 
-		m, err := kafkaReader.ReadMessage(context.Background())
-		if err != nil {
-			log.Errorln("error on kafka reader", err.Error())
-		} else {
-
-			var nfttrade types.NFTTrade
-
-			json.Unmarshal(m.Value, &nfttrade)
-
-			nfttrades <- nfttrade
-
+			m, err := kafkaReader.ReadMessage(context.Background())
 			if err != nil {
-				log.Errorln("error on updating pg", err.Error())
+				log.Errorln("error on kafka reader", err.Error())
+			} else {
+
+				var nfttrade types.NFTTrade
+
+				json.Unmarshal(m.Value, &nfttrade)
+
+				nfttrades <- nfttrade
+
+				if err != nil {
+					log.Errorln("error on updating pg", err.Error())
+				}
 			}
 		}
-	}
+	}()
 
 	http.HandleFunc("/ws/nft", nft)
 	log.Fatal(http.ListenAndServe(*addr, nil))

@@ -33,15 +33,36 @@ func (nc NFTCreation) MarshalBinary() ([]byte, error) {
 	return json.Marshal(nc)
 }
 
+type NFTClass struct {
+	Address      string
+	Symbol       string
+	Name         string
+	Blockchain   string
+	ContractType string
+	Category     string
+}
+
+// MarshalBinary for DefiProtocolState
+func (nc *NFTClass) MarshalBinary() ([]byte, error) {
+	return json.Marshal(nc)
+}
+
+// UnmarshalBinary for DefiProtocolState
+func (nc *NFTClass) UnmarshalBinary(data []byte) error {
+	if err := json.Unmarshal(data, &nc); err != nil {
+		return err
+	}
+	return nil
+}
+
 type NFT struct {
-	// NFTClass       NFTClass
-	TokenID        string
-	CreationTime   time.Time
-	CreatorAddress string
-	URI            string
-	// @Attributes is a collection of attributes from on- and off-chain
-	// TO DO: Should we split up into two fields?
-	Attributes NFTAttributes
+	NFTClass NFTClass
+	TokenID  string
+	// CreationTime   time.Time
+	// CreatorAddress string
+	// URI            string
+
+	// Attributes NFTAttributes
 }
 
 // NFTAttributes can be stored as jasonb in postgres:
@@ -83,9 +104,9 @@ type Asset struct {
 }
 
 type NFTTrade struct {
-	NFT         NFT
-	Price       *big.Int
-	PriceUSD    float64
+	NFT   NFT
+	Price *big.Int
+	// PriceUSD    float64
 	FromAddress string
 	ToAddress   string
 	Currency    Asset
