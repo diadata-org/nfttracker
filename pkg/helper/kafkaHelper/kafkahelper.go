@@ -39,6 +39,8 @@ const (
 	retryDelay           = 2 * time.Second
 	TopicOptionOrderBook = 13
 	TopicNFTMINT         = 20
+	TopicNFTTrades       = 24
+	TopicNFTTradesTest   = 25
 )
 
 type Config struct {
@@ -62,6 +64,8 @@ func getTopic(topic int) string {
 		7:  "tradesEstimation",
 		14: "filtersblockHistoricalDone",
 		20: "TopicNFTMINT",
+		24: "nfttrades",
+		25: "nfttradestest",
 	}
 	result, ok := topicMap[topic]
 	if !ok {

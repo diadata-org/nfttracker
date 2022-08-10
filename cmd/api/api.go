@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"io"
 	"net/http"
 
 	"github.com/diadata-org/nfttracker/pkg/db"
+	"github.com/diadata-org/nfttracker/pkg/types"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -16,6 +18,7 @@ import (
 	"github.com/diadata-org/nfttracker/pkg/utils"
 	"github.com/ethereum/go-ethereum/common"
 
+	"github.com/diadata-org/nfttracker/pkg/helper/kafkaHelper"
 	"github.com/gorilla/websocket"
 	"github.com/sirupsen/logrus"
 )
@@ -43,6 +46,7 @@ const (
 	NFT_MINT_CHANNEL     = "nftmint"
 	NFT_DEPLOY_CHANNEL   = "nftdeploy"
 	NFT_TRANSFER_CHANNEL = "nfttransfer"
+	NFT_SALES_CHANNEL    = "nftsales"
 
 	NFT_MINT_STATS_CHANNEL = "nftstats"
 
@@ -54,14 +58,18 @@ var (
 	nftDeploychannel   *wshelper.WSChannel
 	nftMintchannel     *wshelper.WSChannel
 	nftTransferchannel *wshelper.WSChannel
-	addr               = flag.String("addr", ":8080", "http service address")
-	upgrader           = websocket.Upgrader{} // use default options
-	nftdeployed        chan string
-	grpcaddr           string
-	mintaddr           string
-	nftminted          chan pb.NFTTransaction
-	nfttransfer        chan pb.NFTTransaction
-	influxclient       *db.DB
+	nftTradechannel    *wshelper.WSChannel
+
+	addr        = flag.String("addr", ":8080", "http service address")
+	upgrader    = websocket.Upgrader{} // use default options
+	nftdeployed chan string
+	grpcaddr    string
+	mintaddr    string
+	nftminted   chan pb.NFTTransaction
+	nfttransfer chan pb.NFTTransaction
+	nfttrades   chan types.NFTTrade
+
+	influxclient *db.DB
 )
 
 func nft(w http.ResponseWriter, r *http.Request) {
@@ -105,6 +113,12 @@ func nft(w http.ResponseWriter, r *http.Request) {
 		case NFT_MINT_CHANNEL:
 			{
 				nftMintchannel.AddConnection((c))
+				msg := "subscibed to " + message.Channel
+				c.WriteJSON(&WSResponse{Response: msg})
+			}
+		case NFT_SALES_CHANNEL:
+			{
+				nftTradechannel.AddConnection((c))
 				msg := "subscibed to " + message.Channel
 				c.WriteJSON(&WSResponse{Response: msg})
 			}
@@ -162,13 +176,23 @@ func main() {
 		log.Fatal("influxclient", err)
 	}
 
+	kafkaReader := kafkaHelper.NewReaderNextMessage(kafkaHelper.TopicNFTTrades)
+	defer func() {
+		err := kafkaReader.Close()
+		if err != nil {
+			log.Errorln(err)
+		}
+	}()
+
 	nftDeploychannel = wshelper.NewChannel()
 	nftMintchannel = wshelper.NewChannel()
 	nftTransferchannel = wshelper.NewChannel()
+	nftTradechannel = wshelper.NewChannel()
 
 	nftdeployed = make(chan string)
 	nftminted = make(chan pb.NFTTransaction)
 	nfttransfer = make(chan pb.NFTTransaction)
+	nfttrades = make(chan types.NFTTrade)
 
 	flag.Parse()
 
@@ -186,12 +210,16 @@ func main() {
 				nftMintchannel.Send(&WSResponse{Response: msg})
 
 			case msg := <-nfttransfer:
-				log.Infoln("nft minted", msg)
+				log.Infoln("nft transfer", msg)
 				nftTransferchannel.Send(&WSResponse{Response: msg})
 
-			}
+			case msg := <-nfttrades:
+				log.Infoln("nft trade", msg)
+				nftTradechannel.Send(&WSResponse{Response: msg})
 
+			}
 		}
+
 	}()
 
 	//Listen to nftdeployed and nftmint events from restpected grpc streams
@@ -269,6 +297,25 @@ func main() {
 			log.Infoln("Resp sent to chan: nftmintstream %s", resp)
 		}
 	}()
+
+	for {
+
+		m, err := kafkaReader.ReadMessage(context.Background())
+		if err != nil {
+			log.Errorln("error on kafka reader", err.Error())
+		} else {
+
+			var nfttrade types.NFTTrade
+
+			json.Unmarshal(m.Value, &nfttrade)
+
+			nfttrades <- nfttrade
+
+			if err != nil {
+				log.Errorln("error on updating pg", err.Error())
+			}
+		}
+	}
 
 	http.HandleFunc("/ws/nft", nft)
 	log.Fatal(http.ListenAndServe(*addr, nil))
