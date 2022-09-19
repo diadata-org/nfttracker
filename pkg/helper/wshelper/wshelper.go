@@ -30,6 +30,7 @@ func (wc *WSChannel) RemoveConnection(conn *websocket.Conn) {
 	wc.clients[conn] = Client{IsConnected: false}
 	log.Println("RemoveConnection: new status", wc.clients[conn].IsConnected)
 	conn.Close()
+	delete(wc.clients, conn)
 
 }
 
@@ -38,15 +39,11 @@ func (wc *WSChannel) Ping(conn *websocket.Conn) {
 }
 
 func (wc *WSChannel) Send(m interface{}) {
-
-	for conn, client := range wc.clients {
-		if client.IsConnected {
-			//TODO send only if last ping is in 5 minutes
-			err := conn.WriteJSON(m)
-			if err != nil {
-				log.Println(err)
-			}
-
+	for conn, _ := range wc.clients {
+		//TODO send only if last ping is in 5 minutes
+		err := conn.WriteJSON(m)
+		if err != nil {
+			log.Println(err)
 		}
 
 	}

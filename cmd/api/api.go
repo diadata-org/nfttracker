@@ -26,8 +26,9 @@ type WSRequest struct {
 }
 
 type WSResponse struct {
-	Error    string
+	Error    string `json:",omitempty"`
 	Response interface{}
+	Channel  string
 }
 
 type WSMintStatsResponse struct {
@@ -87,14 +88,14 @@ func nft(w http.ResponseWriter, r *http.Request) {
 			{
 				nftDeploychannel.AddConnection((c))
 				msg := "subscribed to " + message.Channel
-				c.WriteJSON(&WSResponse{Response: msg})
+				c.WriteJSON(&WSResponse{Response: msg, Channel: message.Channel})
 
 			}
 		case NFT_MINT_CHANNEL:
 			{
 				nftMintchannel.AddConnection((c))
-				msg := "subscibed to " + message.Channel
-				c.WriteJSON(&WSResponse{Response: msg})
+				msg := "subscribed to " + message.Channel
+				c.WriteJSON(&WSResponse{Response: msg, Channel: message.Channel})
 			}
 		case NFT_MINT_STATS_CHANNEL:
 			{
@@ -109,10 +110,10 @@ func nft(w http.ResponseWriter, r *http.Request) {
 						if err != nil {
 							log.Errorln("error getting minstats from influx", err)
 						}
-						c.WriteJSON(&WSResponse{Response: WSMintStatsResponse{Address: address, Duration: message.Duration, Mint: count, TotalMint: totalMint}})
+						c.WriteJSON(&WSResponse{Response: WSMintStatsResponse{Address: address, Duration: message.Duration, Mint: count, TotalMint: totalMint}, Channel: message.Channel})
 					}
 				} else {
-					c.WriteJSON(&WSResponse{Error: "Missing addresses or duration"})
+					c.WriteJSON(&WSResponse{Error: "Missing addresses or duration", Channel: message.Channel})
 
 				}
 
@@ -124,7 +125,7 @@ func nft(w http.ResponseWriter, r *http.Request) {
 			}
 		default:
 			{
-				c.WriteJSON(&WSResponse{Error: "Invalid Command"})
+				c.WriteJSON(&WSResponse{Error: "Invalid Command", Channel: message.Channel})
 
 			}
 
@@ -245,5 +246,7 @@ func main() {
 	}()
 
 	http.HandleFunc("/ws/nft", nft)
+
+	log.Infoln("Server running at", *addr)
 	log.Fatal(http.ListenAndServe(*addr, nil))
 }
