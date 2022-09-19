@@ -288,13 +288,18 @@ func main() {
 				log.Fatalf("cannot receive %v", err)
 			}
 
-			if resp.GetAddress() == common.HexToAddress("0x0000000000000000000000000000000000000000").Hex() {
+			if resp.GetFrom() == common.HexToAddress("0x0000000000000000000000000000000000000000").Hex() {
 				nftminted <- *resp
+				log.Infoln("Resp sent to chan: nftmintstream %s", resp)
+
 			} else {
 				nfttransfer <- *resp
+				log.Infoln("Resp sent to chan: resp.GetTo()  %s", resp.GetFrom())
+
+				log.Infoln("Resp sent to chan: nfttransfer %s", resp)
+
 			}
 
-			log.Infoln("Resp sent to chan: nftmintstream %s", resp)
 		}
 	}()
 
