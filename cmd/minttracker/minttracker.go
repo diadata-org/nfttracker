@@ -233,17 +233,19 @@ func (tt *TransferTracker) subscribeNFT(address string) {
 			case logTransferSigHash.Hex():
 				{
 					mint := false
-					log.Println("from tx", common.HexToAddress(msg.Topics[1].Hex()))
-					log.Println("to tx", common.HexToAddress(msg.Topics[2].Hex()))
-					log.Println("tokenid tx", msg.Topics[3].Hex())
+					log.Infoln("msg.TxHash.Hex()", msg.TxHash.Hex())
 					tx := pb.NFTTransaction{}
 					tx.Address = msg.Address.Hex()
 					tx.Txhash = msg.TxHash.Hex()
+					tx.From = common.HexToAddress(msg.Topics[1].Hex()).Hex()
+					tx.To = common.HexToAddress(msg.Topics[2].Hex()).Hex()
 
-					if common.HexToAddress(msg.Topics[1].Hex()) == common.HexToAddress("0x0000000000000000000000000000000000000000") {
+					if tx.From == common.HexToAddress("0x0000000000000000000000000000000000000000").Hex() {
 						mint = true
-						transferevent <- tx
+						log.Infoln("Mint", msg.TxHash.Hex())
 					}
+					transferevent <- tx
+
 					tt.influxclient.SaveNFTEvent(diatypes.NFTTransfer{Mint: mint, Address: msg.Address.Hex(), From: common.HexToAddress(msg.Topics[1].Hex()).Hex(), To: common.HexToAddress(msg.Topics[2].Hex()).Hex(), TransactionID: msg.TxHash.Hex()})
 					tt.influxclient.Flush()
 				}
