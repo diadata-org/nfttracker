@@ -32,7 +32,7 @@ type WSRequest struct {
 type WSResponse struct {
 	Error    string `json:",omitempty"`
 	Response interface{}
-	Channel  string
+	Channel  string `json:",omitempty"`
 }
 
 type WSMintStatsResponse struct {
@@ -44,11 +44,10 @@ type WSMintStatsResponse struct {
 }
 
 const (
-	NFT_MINT_CHANNEL     = "nftmint"
-	NFT_DEPLOY_CHANNEL   = "nftdeploy"
-	NFT_TRANSFER_CHANNEL = "nfttransfer"
-	NFT_SALES_CHANNEL    = "nftsales"
-
+	NFT_MINT_CHANNEL       = "nftmint"
+	NFT_DEPLOY_CHANNEL     = "nftdeploy"
+	NFT_TRANSFER_CHANNEL   = "nfttransfer"
+	NFT_SALES_CHANNEL      = "nftsales"
 	NFT_MINT_STATS_CHANNEL = "nftstats"
 
 	PING = "ping"
@@ -120,8 +119,8 @@ func nft(w http.ResponseWriter, r *http.Request) {
 		case NFT_SALES_CHANNEL:
 			{
 				nftTradechannel.AddConnection((c))
-				msg := "subscibed to " + message.Channel
-				c.WriteJSON(&WSResponse{Response: msg})
+				msg := "subscribed to " + message.Channel
+				c.WriteJSON(&WSResponse{Response: msg, Channel: message.Channel})
 			}
 		case NFT_MINT_STATS_CHANNEL:
 			{
@@ -204,19 +203,19 @@ func main() {
 			select {
 			case msg := <-nftdeployed:
 				log.Infoln("nft deployed", msg)
-				nftDeploychannel.Send(&WSResponse{Response: msg})
+				nftDeploychannel.Send(&WSResponse{Response: msg, Channel: NFT_DEPLOY_CHANNEL})
 
 			case msg := <-nftminted:
 				log.Infoln("nft minted", msg)
-				nftMintchannel.Send(&WSResponse{Response: msg})
+				nftMintchannel.Send(&WSResponse{Response: msg, Channel: NFT_MINT_CHANNEL})
 
 			case msg := <-nfttransfer:
 				log.Infoln("nft transfer", msg)
-				nftTransferchannel.Send(&WSResponse{Response: msg})
+				nftTransferchannel.Send(&WSResponse{Response: msg, Channel: NFT_TRANSFER_CHANNEL})
 
 			case msg := <-nfttrades:
 				log.Infoln("nft trade", msg)
-				nftTradechannel.Send(&WSResponse{Response: msg})
+				nftTradechannel.Send(&WSResponse{Response: msg, Channel: NFT_SALES_CHANNEL})
 
 			}
 		}
