@@ -46,7 +46,7 @@ var (
 	grpcaddr             = ""
 	StartupDone          bool         // used for probes
 	lastminttx           = time.Now() // used for probes
-	lastminttxupdatechan chan time.Time
+	lastminttxupdatechan = make(chan time.Time)
 )
 
 type TransferTracker struct {
@@ -202,9 +202,7 @@ func (tt *TransferTracker) subscribeNFT(address string) {
 	go func() {
 		for {
 			msg := <-events
-			log.Infoln("recieved message")
-
-			lastminttxupdatechan <- time.Now()
+			log.Infoln("recieved message", msg.Address.Hex())
 
 			switch msg.Topics[0].Hex() {
 			case logTransferSigHash.Hex():
@@ -222,6 +220,7 @@ func (tt *TransferTracker) subscribeNFT(address string) {
 						log.Infoln("Mint", msg.TxHash.Hex())
 					}
 					transferevent <- tx
+					lastminttxupdatechan <- time.Now()
 
 					tt.influxclient.SaveNFTEvent(diatypes.NFTTransfer{Mint: mint, Address: msg.Address.Hex(), From: common.HexToAddress(msg.Topics[1].Hex()).Hex(), To: common.HexToAddress(msg.Topics[2].Hex()).Hex(), TransactionID: msg.TxHash.Hex()})
 					tt.influxclient.Flush()
