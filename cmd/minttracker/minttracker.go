@@ -23,7 +23,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/getsentry/sentry-go"
 )
 
 var (
@@ -42,9 +41,12 @@ var (
 	logTransferSigHash   = crypto.Keccak256Hash(logTransferSig)
 	NFT_COLLECTION_TABLE = "nftcollection"
 	LogAnySwapInbyteHex  = crypto.Keccak256Hash(LogAnySwapInbyte)
-	transferevent        chan pb.NFTTransaction
+	transferevent        = make(chan pb.NFTTransaction)
 	mintgrpcPort         = ":50052"
 	grpcaddr             = ""
+	StartupDone          bool         // used for probes
+	lastminttx           = time.Now() // used for probes
+	lastminttxupdatechan chan time.Time
 )
 
 type TransferTracker struct {
@@ -52,46 +54,15 @@ type TransferTracker struct {
 	influxclient *db.DB
 }
 
-type server struct {
-	pb.UnimplementedEventCollectorServer
-}
-
-func (s *server) NFTTransfer(_ *emptypb.Empty, server pb.EventCollector_NFTTransferServer) error {
-
-	for {
-		msg := <-transferevent
-		server.Send(&msg)
-	}
-
-	return nil
-}
-
-func initsentry() {
-	err := sentry.Init(sentry.ClientOptions{
-		Dsn: "https://3983683f29344f40aef4e5125664dfb7@o1291064.ingest.sentry.io/6563600",
-		// Set TracesSampleRate to 1.0 to capture 100%
-		// of transactions for performance monitoring.
-		// We recommend adjusting this value in production,
-		TracesSampleRate: 1.0,
-	})
-	if err != nil {
-		log.Fatalf("sentry.Init: %s", err)
-	}
-
-	sentry.CaptureMessage("It works!")
-
-}
-
 func main() {
-	initsentry()
-	defer sentry.Flush(2 * time.Second)
+
+	startProbe()
 
 	log.Infoln("starting Mint Tracker ...")
 	grpcaddr = utils.Getenv("PERSISTOR_GRPC", "0.0.0.0:50051")
 	ethws := utils.Getenv("ETH_URI_WS", "172.17.25.42:50051")
 
-	transferevent = make(chan pb.NFTTransaction)
-
+	// start listening to grpc server
 	lis, err := net.Listen("tcp", mintgrpcPort)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
@@ -106,13 +77,15 @@ func main() {
 		}
 	}()
 
-	//------
+	// dial ethclient
 
 	client, err := ethclient.Dial(ethws)
 	if err != nil {
 		log.Fatal("ethclient", err)
 	}
-	log.Println("connecting to influx")
+	log.Infoln("connecting to influx")
+
+	// connect to influx
 
 	influxclient, err := db.NewDataStore()
 	if err != nil {
@@ -131,6 +104,7 @@ func main() {
 	go listenToDeployedNFT(&wg, tt)
 
 	getNFTAddresstolisten(&wg, tt)
+	StartupDone = true
 
 	wg.Wait()
 
@@ -182,6 +156,7 @@ func listenToDeployedNFT(wg *sync.WaitGroup, tt *TransferTracker) {
 
 func getNFTAddresstolisten(wg *sync.WaitGroup, tt *TransferTracker) {
 	pgclient := db.PostgresDatabase()
+
 	//	query := `select address from ` + NFT_COLLECTION_TABLE + ` ORDER BY time DESC LIMIT 999 ;`
 
 	query := `select address from ` + NFT_COLLECTION_TABLE + ` ORDER BY time DESC;`
@@ -228,6 +203,8 @@ func (tt *TransferTracker) subscribeNFT(address string) {
 		for {
 			msg := <-events
 			log.Infoln("recieved message")
+
+			lastminttxupdatechan <- time.Now()
 
 			switch msg.Topics[0].Hex() {
 			case logTransferSigHash.Hex():
