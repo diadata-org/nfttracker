@@ -26,8 +26,11 @@ func startProbe() {
 	}()
 
 	go func() {
-		lastminute := <-lastminttxupdatechan
-		lastminttx = lastminute
+		for {
+
+			lastminute := <-lastminttxupdatechan
+			lastminttx = lastminute
+		}
 
 	}()
 
