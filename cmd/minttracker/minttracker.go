@@ -208,7 +208,7 @@ func (tt *TransferTracker) subscribeNFT(address string) {
 			case logTransferSigHash.Hex():
 				{
 					mint := false
-					log.Infoln("msg.TxHash.Hex()", msg.TxHash.Hex())
+					log.Infoln("Recieved Tx", msg.TxHash.Hex())
 					tx := pb.NFTTransaction{}
 					tx.Address = msg.Address.Hex()
 					tx.Txhash = msg.TxHash.Hex()
@@ -220,7 +220,11 @@ func (tt *TransferTracker) subscribeNFT(address string) {
 						log.Infoln("Mint", msg.TxHash.Hex())
 					}
 					transferevent <- tx
+					log.Infoln("update time for probe", tx.Address)
+
 					lastminttxupdatechan <- time.Now()
+
+					log.Infoln("SaveNFTEvent", tx.Address)
 
 					tt.influxclient.SaveNFTEvent(diatypes.NFTTransfer{Mint: mint, Address: msg.Address.Hex(), From: common.HexToAddress(msg.Topics[1].Hex()).Hex(), To: common.HexToAddress(msg.Topics[2].Hex()).Hex(), TransactionID: msg.TxHash.Hex()})
 					tt.influxclient.Flush()
