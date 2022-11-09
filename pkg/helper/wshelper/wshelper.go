@@ -1,10 +1,11 @@
 package wshelper
 
 import (
-	"log"
-
 	"github.com/gorilla/websocket"
+	"github.com/sirupsen/logrus"
 )
+
+var log = logrus.New()
 
 type Client struct {
 	IsConnected       bool
@@ -39,11 +40,16 @@ func (wc *WSChannel) Ping(conn *websocket.Conn) {
 }
 
 func (wc *WSChannel) Send(m interface{}) {
-	for conn, _ := range wc.clients {
-		//TODO send only if last ping is in 5 minutes
-		err := conn.WriteJSON(m)
-		if err != nil {
-			log.Println(err)
+	log.Infoln("sending message to clients ", m)
+
+	for conn, metadata := range wc.clients {
+
+		if metadata.IsConnected {
+			err := conn.WriteJSON(m)
+			if err != nil {
+				log.Errorln("error sending json to client", err)
+			}
+
 		}
 
 	}
